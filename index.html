@@ -241,7 +241,7 @@
 
         // Live API
         const PIZZINT_API = 'https://www.pizzint.watch/api/dashboard-data';
-        const CORS_PROXY = 'https://corsproxy.io/?';
+        const CORS_PROXY = 'https://api.allorigins.win/get?url=';
 
         // ==================== STATE ====================
         let mainChart = null;
@@ -388,7 +388,9 @@
         async function fetchLive() {
             try {
                 const res = await fetch(CORS_PROXY + encodeURIComponent(PIZZINT_API));
-                const json = await res.json();
+                const wrapper = await res.json();
+                // allorigins returns {contents: "json string"}
+                const json = JSON.parse(wrapper.contents);
                 if (json.success && json.data) {
                     const pops = json.data.map(l => l.current_popularity || 0);
                     return pops.reduce((a, b) => a + b, 0) / pops.length;
