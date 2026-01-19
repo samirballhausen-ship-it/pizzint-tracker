@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Supabase removed - using GitHub storage instead -->
     <style>
         .gradient-bg { background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #0f1419 100%); }
         .card-glass { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.08); }
@@ -227,14 +227,21 @@
     </div>
 
     <script>
+        // Global error handler
+        window.onerror = function(msg, url, line, col, error) {
+            console.error('Global error:', msg, 'at', url, line, col);
+            document.getElementById('dbText').textContent = 'JS Error';
+            return false;
+        };
+
         // ==================== CONFIG ====================
-        // REPLACE WITH YOUR SUPABASE CREDENTIALS (or leave for demo mode)
+        // Supabase is optional - we use GitHub for data storage
         const SUPABASE_URL = 'YOUR_SUPABASE_URL';
         const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 
-        // Check if Supabase is configured
-        const SUPABASE_CONFIGURED = SUPABASE_URL && SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
-        const supabase = SUPABASE_CONFIGURED ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+        // Check if Supabase is configured and available
+        const SUPABASE_CONFIGURED = false; // Disabled - using GitHub storage
+        const supabase = null;
 
         // GitHub data file (auto-collected every 10 min)
         const GITHUB_DATA_URL = 'https://raw.githubusercontent.com/samirballhausen-ship-it/pizzint-tracker/master/data/readings.json';
@@ -645,8 +652,14 @@
         // ==================== INIT ====================
         async function init() {
             console.log('init() started');
-            initCharts();
-            console.log('Charts initialized');
+            try {
+                initCharts();
+                console.log('Charts initialized');
+            } catch(e) {
+                console.error('Chart init error:', e);
+                document.getElementById('dbText').textContent = 'Chart Error';
+                return;
+            }
 
             // Try loading data: GitHub first, then Supabase, then demo mode
             console.log('Calling loadFromGitHub...');
