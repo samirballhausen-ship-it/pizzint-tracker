@@ -228,13 +228,15 @@
 
     <script>
         // ==================== CONFIG ====================
-        // REPLACE WITH YOUR SUPABASE CREDENTIALS
+        // REPLACE WITH YOUR SUPABASE CREDENTIALS (or leave for demo mode)
         const SUPABASE_URL = 'YOUR_SUPABASE_URL';
         const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
 
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // Check if Supabase is configured
+        const SUPABASE_CONFIGURED = SUPABASE_URL && SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
+        const supabase = SUPABASE_CONFIGURED ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-        // Fallback: Also fetch live from pizzint.watch
+        // Live API
         const PIZZINT_API = 'https://www.pizzint.watch/api/dashboard-data';
         const CORS_PROXY = 'https://corsproxy.io/?';
 
@@ -266,6 +268,12 @@
 
         // ==================== SUPABASE ====================
         async function loadFromSupabase() {
+            if (!SUPABASE_CONFIGURED) {
+                document.getElementById('dbDot').className = 'w-2 h-2 bg-gray-500 rounded-full';
+                document.getElementById('dbText').textContent = 'Demo';
+                return false;
+            }
+
             document.getElementById('dbDot').className = 'w-2 h-2 bg-yellow-500 rounded-full';
             document.getElementById('dbText').textContent = 'Loading...';
 
@@ -309,6 +317,7 @@
 
         // Subscribe to realtime updates
         function subscribeToUpdates() {
+            if (!supabase) return;
             supabase
                 .channel('readings')
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pizza_readings' }, (payload) => {
@@ -576,21 +585,46 @@
                 updateUI();
                 subscribeToUpdates();
             } else {
-                document.getElementById('historyInfo').textContent = 'Keine Daten in DB - bitte Supabase konfigurieren';
+                if (!SUPABASE_CONFIGURED) {
+                    document.getElementById('historyInfo').innerHTML = '<span class="text-yellow-400">DEMO MODUS</span> - Live-Index wird angezeigt, aber keine Historie. <a href="https://github.com/samirballhausen-ship-it/pizzint-tracker#readme" target="_blank" class="text-cyan-400 underline">Supabase einrichten</a> für volle Funktionalität.';
+                } else {
+                    document.getElementById('historyInfo').textContent = 'Keine Daten in DB - Collector noch nicht gestartet';
+                }
             }
 
-            // Also fetch live for current value
+            // Fetch live for current value
             const liveIndex = await fetchLive();
             if (liveIndex !== null) {
                 document.getElementById('statusDot').className = 'pulse-dot w-2 h-2 bg-green-500 rounded-full';
                 document.getElementById('statusText').textContent = 'LIVE';
+                document.getElementById('currentIndex').textContent = Math.round(liveIndex);
                 document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('de-DE');
+
+                // In demo mode, add live point to chart
+                if (!SUPABASE_CONFIGURED) {
+                    readings.push({ timestamp: new Date(), index_value: liveIndex, dc_hour: getDCHour(), is_overtime: isOvertime() });
+                    updateUI();
+                }
             }
 
             setInterval(() => document.getElementById('dcTime').textContent = getDCTime(), 1000);
+
+            // Refresh live value every minute
             setInterval(async () => {
-                await loadFromSupabase();
-                updateUI();
+                const live = await fetchLive();
+                if (live !== null) {
+                    document.getElementById('currentIndex').textContent = Math.round(live);
+                    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('de-DE');
+                    if (!SUPABASE_CONFIGURED) {
+                        readings.push({ timestamp: new Date(), index_value: live, dc_hour: getDCHour(), is_overtime: isOvertime() });
+                        if (readings.length > 1000) readings = readings.slice(-500);
+                        updateUI();
+                    }
+                }
+                if (SUPABASE_CONFIGURED) {
+                    await loadFromSupabase();
+                    updateUI();
+                }
             }, 60000);
         }
 
