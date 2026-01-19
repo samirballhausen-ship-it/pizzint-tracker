@@ -1,39 +1,46 @@
 # PIZZINT Tracker - Webapp mit automatischer Datensammlung
 
-Diese Webapp sammelt automatisch Pizza Index Daten und speichert sie in Supabase.
+Diese Webapp sammelt automatisch Pizza Index Daten und speichert sie direkt im GitHub Repository.
 Die Daten werden alle 10 Minuten erfasst - auch wenn dein PC aus ist!
 
-## 🚀 Schnell-Setup (10 Minuten)
+**⚠️ Hinweis**: GitHub Actions scheduled workflows können verzögert sein (bis zu mehreren Stunden). Dies ist eine bekannte Einschränkung von GitHub Actions auf Free Tier. Für 100% zuverlässiges Timing sollte ein externer Cron-Service verwendet werden.
 
-### 1. Supabase Projekt erstellen
+## 🚀 Schnell-Setup (2 Minuten)
 
-1. Gehe zu [supabase.com](https://supabase.com) und erstelle ein kostenloses Projekt
-2. Warte bis das Projekt initialisiert ist (~2 Min)
-3. Gehe zu **SQL Editor** und führe den Inhalt von `supabase-schema.sql` aus
-4. Gehe zu **Project Settings → API** und kopiere:
-   - `Project URL` (z.B. `https://xxxxx.supabase.co`)
-   - `anon/public` Key (für Frontend)
-   - `service_role` Key (für Collector - GEHEIM halten!)
+### Setup ist bereits erledigt!
 
-### 2. Frontend konfigurieren
+Das Repository ist fertig konfiguriert:
+- ✅ GitHub Actions Workflow läuft automatisch alle 10 Minuten
+- ✅ Daten werden in `data/readings.json` gespeichert
+- ✅ Frontend lädt Daten direkt von GitHub
+- ✅ Keine externe Datenbank benötigt!
 
-In `index.html`, ersetze diese Zeilen (~Zeile 170):
+### Optional: Manueller Workflow-Start
 
-```javascript
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';  // ← Project URL einfügen
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';  // ← anon key einfügen
+Falls die automatische Sammlung verzögert ist:
+
+**Option 1: Via GitHub UI** (Empfohlen)
+1. Gehe zu **Actions** → **Collect Pizza Index Data**
+2. Klicke **Run workflow** → **Run workflow**
+3. Warte ~10 Sekunden bis neue Daten gesammelt sind
+
+**Option 2: Lokales Script ausführen** (benötigt Node.js 18+)
+```bash
+# Im Repository-Verzeichnis:
+node scripts/collect-manual.js
+
+# Dann committen und pushen:
+git add data/readings.json
+git commit -m "Manual data collection"
+git push
 ```
 
-### 3. Auf Vercel deployen
+### GitHub Pages aktivieren (falls noch nicht aktiv)
 
-1. Push den `webapp` Ordner zu GitHub
-2. Gehe zu [vercel.com](https://vercel.com) und importiere das Repo
-3. Füge Environment Variables hinzu:
-   - `SUPABASE_URL` = deine Project URL
-   - `SUPABASE_SERVICE_ROLE_KEY` = dein service_role key (geheim!)
-4. Deploy!
-
-Der Vercel Cron Job sammelt automatisch alle 10 Minuten Daten.
+1. Gehe zu **Settings** → **Pages**
+2. Wähle **Source**: `Deploy from a branch`
+3. Wähle **Branch**: `master` / `root`
+4. Speichern - fertig!
 
 ## 📁 Dateien
 
@@ -53,116 +60,91 @@ webapp/
 └── README.md               # Diese Datei
 ```
 
-## 🆓 GitHub Actions Cron (EMPFOHLEN - Kostenlos!)
+## 🤖 Automatische Datensammlung
 
-GitHub Actions bietet kostenlose Cron Jobs - keine Kosten!
+### GitHub Actions Workflow
 
-### Setup:
+Der Workflow `.github/workflows/collect.yml` läuft automatisch:
+- **Zeitplan**: Alle 10 Minuten (cron: `*/10 * * * *`)
+- **Kostenlos**: GitHub Free Tier inkludiert 2000 Min/Monat
+- **Daten**: Werden in `data/readings.json` im Repository gespeichert
 
-1. **Repository zu GitHub pushen**
-   ```bash
-   git add .
-   git commit -m "Initial commit"
-   git remote add origin https://github.com/DEIN_USERNAME/pizzint-tracker.git
-   git push -u origin main
-   ```
+### ⚠️ Bekannte Einschränkungen
 
-2. **Secrets hinzufuegen** (Repository → Settings → Secrets → Actions)
-   - `SUPABASE_URL` = deine Project URL
-   - `SUPABASE_SERVICE_ROLE_KEY` = dein service_role key
+**GitHub Actions scheduled workflows sind nicht 100% zuverlässig:**
+- Runs können verzögert sein (Minuten bis Stunden)
+- Free Tier hat niedrigere Priorität als bezahlte Accounts
+- Bei hoher Last auf GitHub werden Free Tier Workflows gedrosselt
+- Dies ist eine bekannte GitHub-Einschränkung und kein Bug
 
-3. **Fertig!** Der Workflow laeuft automatisch alle 10 Minuten.
+**Workarounds:**
+1. **Manueller Start**: Actions → "Collect Pizza Index Data" → "Run workflow"
+2. **Externe Überwachung**: Services wie cron-job.org können GitHub Actions triggern
+3. **Längere Intervalle**: Auf `*/30` (alle 30 Min) ändern für stabilere Ausführung
 
-Du kannst den Workflow auch manuell starten: Actions → "Collect Pizza Index Data" → "Run workflow"
+### Für 100% zuverlässiges Timing
 
-### Kosten-Hinweis:
-- GitHub Free: 2000 Min/Monat (reicht fuer ~1400 Runs = alle 10 Min)
-- Fuer sparsameren Betrieb: In `.github/workflows/collect.yml` den Cron auf `*/30` aendern (alle 30 Min)
+Nutze einen externen Cron-Service der GitHub Actions per API triggert:
+- [cron-job.org](https://cron-job.org) (kostenlos)
+- Eigener Server mit cron + GitHub Actions API
+- Vercel Cron (kostenpflichtig)
 
-## 🔧 Alternative: Lokaler Collector
+## 📊 Datenstruktur
 
-### Option A: Einmal ausfuehren
-```bash
-# .env Datei erstellen
-cp .env.example .env
-# Dann SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY eintragen
+Die Daten werden in `data/readings.json` gespeichert:
 
-npm install
-npm run collect
+```json
+{
+  "readings": [
+    {
+      "timestamp": "2026-01-19T09:01:47Z",
+      "index_value": 4.22,
+      "dc_hour": 4,
+      "dc_weekday": 1,
+      "is_overtime": true,
+      "is_weekend": false
+    }
+  ],
+  "spikes": [],
+  "lastUpdate": "2026-01-19T09:01:47Z"
+}
 ```
 
-### Option B: Endlos laufen lassen (alle 10 Min)
-```bash
-npm run collect:continuous
-
-# Mit pm2 im Hintergrund:
-pm2 start scripts/continuous.js --name pizzint
-
-# Oder auf Windows:
-start /B node scripts/continuous.js > collector.log 2>&1
-```
-
-### Option C: System Cron (Linux/Mac)
-```bash
-# Crontab oeffnen
-crontab -e
-
-# Zeile hinzufuegen (alle 10 Min):
-*/10 * * * * cd /path/to/webapp && node scripts/collect.js >> /var/log/pizzint.log 2>&1
-```
-
-## 🔍 Datenbankstruktur
-
-### `pizza_readings`
-- `timestamp` - Zeitstempel
-- `index_value` - Pizza Index (0-100)
-- `dc_hour` - Stunde in DC-Zeit (0-23)
-- `dc_weekday` - Wochentag (0=So, 6=Sa)
-- `is_overtime` - Außerhalb Bürozeiten?
-- `is_weekend` - Wochenende?
-- `raw_data` - Original API Response
-
-### `pizza_spikes`
-- Automatisch erkannte Spikes (>20 Punkte Anstieg oder >70 erreicht)
-
-### `hourly_patterns` / `weekday_patterns`
-- Automatisch berechnete Durchschnitte für Prognose
+### Felder:
+- `index_value`: Durchschnittliche Popularität aller Locations (0-100)
+- `dc_hour`: Stunde in DC-Zeit (0-23)
+- `dc_weekday`: Wochentag (0=Sonntag, 6=Samstag)
+- `is_overtime`: Außerhalb 6-18 Uhr?
+- `is_weekend`: Samstag oder Sonntag?
+- `spikes`: Array von erkannten Spikes (>20 Punkte oder >70 von <55)
 
 ## 💰 Kosten
 
-- **Supabase Free Tier**: 500MB Datenbank, reicht fuer ~2 Jahre Daten
-- **GitHub Actions Free**: 2000 Min/Monat - KOMPLETT KOSTENLOS!
-- **Vercel Free**: Hosting des Frontends (optional)
-- **Vercel Pro** ($20/Monat): Nur wenn du Vercel Cron nutzen willst
+- **Komplett kostenlos!**
+- GitHub Actions Free: 2000 Min/Monat (bei ~1 Min pro Run = ausreichend für tausende Runs)
+- GitHub Pages: Kostenlos für public repositories
+- Keine externe Datenbank benötigt
 
-## 🛠 Lokale Entwicklung
+## 🛠 Architektur
 
-```bash
-npm install
-npm run dev
-```
+### Stack:
+- **Frontend**: Vanilla HTML/JS mit Chart.js
+- **Datenquelle**: [pizzint.watch API](https://www.pizzint.watch/api/dashboard-data)
+- **Storage**: Git-basiert in `data/readings.json`
+- **Automation**: GitHub Actions scheduled workflow
+- **Hosting**: GitHub Pages
 
-Dann http://localhost:5173 öffnen.
+### Vorteile:
+- ✅ Keine externe Datenbank
+- ✅ Keine API Keys / Secrets benötigt
+- ✅ Daten sind versioniert (Git History)
+- ✅ Komplett kostenlos
+- ✅ Einfaches Setup
 
-## 📊 Daten exportieren
-
-Im Frontend gibt es einen "Export CSV" Button der alle Daten herunterlädt.
-
-Oder direkt aus Supabase:
-```sql
-SELECT * FROM pizza_readings
-ORDER BY timestamp DESC;
-```
-
-## ⚡ Realtime Updates
-
-Das Frontend nutzt Supabase Realtime - neue Datenpunkte erscheinen automatisch ohne Refresh!
-
-## 🔒 Sicherheit
-
-- `anon` Key ist öffentlich (nur Lesen erlaubt durch RLS)
-- `service_role` Key ist geheim (kann schreiben)
-- Row Level Security ist aktiviert
+### Nachteile:
+- ⚠️ GitHub Actions Cron nicht 100% zuverlässig (siehe oben)
+- ⚠️ Daten sind öffentlich (public repository)
+- ⚠️ Keine Realtime-Updates (Frontend pollt alle paar Sekunden)
 
 ---
 
