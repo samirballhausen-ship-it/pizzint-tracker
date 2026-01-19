@@ -108,7 +108,7 @@ Die Daten werden in `data/readings.json` gespeichert:
 ## 💰 Kosten
 
 - **Komplett kostenlos!**
-- GitHub Actions Free: 2000 Min/Monat (reicht für ~1400 Runs à 10 Min)
+- GitHub Actions Free: 2000 Min/Monat (reicht für ~1200 Runs bei ~1.5 Min pro Run)
 - GitHub Pages: Kostenlos für public repositories
 - Keine externe Datenbank benötigt
 
