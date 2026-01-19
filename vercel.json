@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/collect",
+      "schedule": "*/10 * * * *"
+    }
+  ],
+  "env": {
+    "SUPABASE_URL": "@supabase-url",
+    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-key"
+  }
+}

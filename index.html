@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PIZZINT Tracker - Live & Historical Data</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        .gradient-bg { background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #0f1419 100%); }
+        .card-glass { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.08); }
+        .pulse-dot { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.5; transform:scale(1.2); } }
+        .alert-pulse { animation: alert-pulse 1.5s infinite; }
+        @keyframes alert-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.7); } 50% { box-shadow: 0 0 30px 15px rgba(239,68,68,0); } }
+        .glow-orange { box-shadow: 0 0 30px rgba(249,115,22,0.3); }
+        .index-number { font-family: 'Courier New', monospace; font-variant-numeric: tabular-nums; }
+        .time-btn.active { background: #ea580c !important; }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen text-white">
+    <div class="container mx-auto px-4 py-6 max-w-6xl">
+        <!-- Header -->
+        <header class="mb-6">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                    <h1 class="text-3xl font-bold tracking-tight">
+                        <span class="text-orange-500">PIZZINT</span>
+                        <span class="text-gray-400 font-normal text-lg ml-2">Tracker</span>
+                    </h1>
+                    <p class="text-gray-500 text-sm mt-1">Live & Historical Pentagon Pizza Index</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div id="dbStatus" class="flex items-center gap-2 bg-gray-900/50 px-3 py-1.5 rounded-lg">
+                        <span class="w-2 h-2 bg-yellow-500 rounded-full" id="dbDot"></span>
+                        <span class="text-xs text-gray-400" id="dbText">Connecting...</span>
+                    </div>
+                    <div class="flex items-center gap-2 bg-gray-900/50 px-3 py-1.5 rounded-lg">
+                        <span class="pulse-dot w-2 h-2 bg-green-500 rounded-full" id="statusDot"></span>
+                        <span class="text-xs text-gray-400" id="statusText">LIVE</span>
+                    </div>
+                    <span class="text-xs text-gray-600" id="lastUpdate">--:--:--</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- SPIKE ALERT -->
+        <div id="spikeAlert" class="hidden bg-red-950/80 border border-red-500 rounded-xl p-4 mb-6 alert-pulse">
+            <div class="flex items-center gap-4">
+                <div class="text-4xl">⚠️</div>
+                <div class="flex-1">
+                    <h2 class="text-xl font-bold text-red-400">ERHÖHTE AKTIVITÄT ERKANNT</h2>
+                    <p id="spikeDetails" class="text-sm text-gray-300 mt-1">Signifikante Abweichung...</p>
+                </div>
+                <div class="text-right">
+                    <div id="spikeValue" class="text-4xl font-bold text-red-400 index-number">--</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN INDEX -->
+        <div class="card-glass rounded-2xl p-6 mb-6 glow-orange">
+            <div class="grid md:grid-cols-3 gap-6">
+                <div class="text-center md:text-left">
+                    <div class="text-xs text-gray-500 uppercase tracking-wider mb-1">Aktueller Index</div>
+                    <div id="currentIndex" class="text-7xl font-bold index-number text-orange-400">--</div>
+                    <div class="flex items-center gap-2 mt-2">
+                        <span id="indexTrend" class="text-2xl">→</span>
+                        <span id="indexChange" class="text-lg text-gray-400">+0</span>
+                        <span class="text-xs text-gray-500">vs. letzte Stunde</span>
+                    </div>
+                </div>
+                <div class="flex flex-col justify-center">
+                    <div class="flex justify-between text-xs text-gray-500 mb-2">
+                        <span>RUHIG</span><span>NORMAL</span><span>AKTIV</span><span>SPIKE</span>
+                    </div>
+                    <div class="h-4 bg-gray-800 rounded-full overflow-hidden">
+                        <div id="indexBar" class="h-full transition-all duration-1000 rounded-full"
+                             style="width:0%;background:linear-gradient(90deg,#22c55e 0%,#84cc16 30%,#eab308 50%,#f97316 70%,#ef4444 100%)"></div>
+                    </div>
+                    <div id="indexStatus" class="text-center text-lg font-semibold mt-2 text-gray-400">--</div>
+                    <div class="flex justify-between mt-2 text-xs">
+                        <span class="text-gray-500">Prognose: <span id="forecastValue" class="text-cyan-400 font-bold">--</span></span>
+                        <span id="forecastDiff" class="text-gray-400">--</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+                        <div class="text-xs text-gray-500">Peak</div>
+                        <div id="peakPeriod" class="text-2xl font-bold text-red-400 index-number">--</div>
+                    </div>
+                    <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+                        <div class="text-xs text-gray-500">Tief</div>
+                        <div id="lowPeriod" class="text-2xl font-bold text-green-400 index-number">--</div>
+                    </div>
+                    <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+                        <div class="text-xs text-gray-500">Baseline</div>
+                        <div id="baseline" class="text-2xl font-bold text-blue-400 index-number">--</div>
+                    </div>
+                    <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+                        <div class="text-xs text-gray-500">DB Records</div>
+                        <div id="totalRecords" class="text-2xl font-bold text-purple-400 index-number">--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN CHART -->
+        <div class="card-glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                <div>
+                    <h2 class="text-lg font-semibold">Pizza Index Verlauf</h2>
+                    <p class="text-xs text-gray-500">Historische Daten aus Datenbank</p>
+                </div>
+                <div class="flex gap-2 items-center">
+                    <label class="flex items-center gap-2 text-xs text-gray-400">
+                        <input type="checkbox" id="showForecast" checked onchange="updateChart()" class="rounded"> Prognose
+                    </label>
+                    <div class="flex gap-1 bg-gray-900 rounded-lg p-1">
+                        <button onclick="setTimeRange('6h')" class="time-btn px-3 py-1.5 text-xs rounded transition" data-range="6h">6H</button>
+                        <button onclick="setTimeRange('12h')" class="time-btn px-3 py-1.5 text-xs rounded transition" data-range="12h">12H</button>
+                        <button onclick="setTimeRange('24h')" class="time-btn px-3 py-1.5 text-xs rounded transition active" data-range="24h">24H</button>
+                        <button onclick="setTimeRange('3d')" class="time-btn px-3 py-1.5 text-xs rounded transition" data-range="3d">3T</button>
+                        <button onclick="setTimeRange('7d')" class="time-btn px-3 py-1.5 text-xs rounded transition" data-range="7d">7T</button>
+                        <button onclick="setTimeRange('30d')" class="time-btn px-3 py-1.5 text-xs rounded transition" data-range="30d">30T</button>
+                        <button onclick="setTimeRange('90d')" class="time-btn px-3 py-1.5 text-xs rounded transition" data-range="90d">90T</button>
+                        <button onclick="setTimeRange('all')" class="time-btn px-3 py-1.5 text-xs rounded transition" data-range="all">ALLE</button>
+                    </div>
+                </div>
+            </div>
+            <div class="h-80">
+                <canvas id="mainChart"></canvas>
+            </div>
+            <div class="flex items-center justify-center gap-6 mt-4 text-xs text-gray-400 flex-wrap">
+                <div class="flex items-center gap-2"><div class="w-3 h-3 rounded bg-orange-500"></div><span>Aktuell</span></div>
+                <div class="flex items-center gap-2"><div class="w-3 h-3 rounded bg-cyan-500/50"></div><span>Normal-Korridor</span></div>
+                <div class="flex items-center gap-2"><div class="w-8 h-0.5" style="border-top:2px dashed #06b6d4;"></div><span>Prognose</span></div>
+                <div class="flex items-center gap-2"><div class="w-3 h-3 rounded bg-red-500/30"></div><span>Überstunden</span></div>
+            </div>
+            <div class="mt-4 text-xs text-gray-500 border-t border-gray-800 pt-3 flex justify-between">
+                <span id="historyInfo">Lade Daten aus Datenbank...</span>
+                <button onclick="exportData()" class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded transition">Export CSV</button>
+            </div>
+        </div>
+
+        <!-- PATTERN ANALYSIS -->
+        <div class="card-glass rounded-2xl p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">Muster-Analyse (aus DB)</h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-400 mb-2">Tagesmuster (DC-Zeit)</h3>
+                    <div class="h-40"><canvas id="patternChart"></canvas></div>
+                </div>
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-400 mb-2">Wochentag-Muster</h3>
+                    <div class="h-40"><canvas id="weekdayChart"></canvas></div>
+                </div>
+            </div>
+            <div class="mt-4 grid md:grid-cols-4 gap-4">
+                <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+                    <div class="text-xs text-gray-500">Ø 7 Tage</div>
+                    <div id="avg7d" class="text-2xl font-bold text-blue-400 index-number">--</div>
+                </div>
+                <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+                    <div class="text-xs text-gray-500">Max 7 Tage</div>
+                    <div id="max7d" class="text-2xl font-bold text-red-400 index-number">--</div>
+                </div>
+                <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+                    <div class="text-xs text-gray-500">Spikes Total</div>
+                    <div id="spikesTotal" class="text-2xl font-bold text-orange-400 index-number">--</div>
+                </div>
+                <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+                    <div class="text-xs text-gray-500">Daten seit</div>
+                    <div id="dataSince" class="text-lg font-bold text-purple-400">--</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SPIKE HISTORY -->
+        <div class="card-glass rounded-2xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-lg font-semibold">Spike-Historie (aus DB)</h2>
+                    <p class="text-xs text-gray-500">Automatisch erkannte Aktivitätsspitzen</p>
+                </div>
+                <div class="bg-red-900/30 px-3 py-1 rounded-full text-sm">
+                    <span id="spikeCount">0</span> Spikes
+                </div>
+            </div>
+            <div id="spikeHistory" class="space-y-2 max-h-64 overflow-y-auto">
+                <p class="text-gray-500 text-sm">Lade Spikes...</p>
+            </div>
+        </div>
+
+        <!-- OVERTIME STATUS -->
+        <div class="card-glass rounded-2xl p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">DC Status</h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div id="overtimeStatus" class="bg-gray-900/50 rounded-xl p-5">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm text-gray-400">Aktuell</span>
+                        <span id="overtimeLabel" class="px-3 py-1 rounded-full text-xs font-semibold bg-green-900/50 text-green-400">BÜROZEIT</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div id="overtimeIcon" class="text-4xl">🏢</div>
+                        <div>
+                            <div id="overtimeText" class="text-lg font-semibold">Normale Arbeitszeit</div>
+                            <div class="text-sm text-gray-400">DC Zeit: <span id="dcTime">--:--</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-900/50 rounded-xl p-5">
+                    <div class="text-sm text-gray-400 mb-3">Prognose nächste 6h</div>
+                    <div id="forecastList" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="text-center text-gray-600 text-xs py-4">
+            <p>Daten werden automatisch alle 10 Min erfasst und in Supabase gespeichert</p>
+        </footer>
+    </div>
+
+    <script>
+        // ==================== CONFIG ====================
+        // REPLACE WITH YOUR SUPABASE CREDENTIALS
+        const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+        const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Fallback: Also fetch live from pizzint.watch
+        const PIZZINT_API = 'https://www.pizzint.watch/api/dashboard-data';
+        const CORS_PROXY = 'https://corsproxy.io/?';
+
+        // ==================== STATE ====================
+        let mainChart = null;
+        let patternChart = null;
+        let weekdayChart = null;
+        let readings = [];
+        let hourlyPatterns = [];
+        let weekdayPatterns = [];
+        let spikes = [];
+        let currentTimeRange = '24h';
+
+        // ==================== TIME ====================
+        function getDCTime() {
+            return new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false });
+        }
+        function getDCHour() {
+            return parseInt(new Date().toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', hour12: false }));
+        }
+        function isOvertime() {
+            const h = getDCHour();
+            return h >= 18 || h < 6;
+        }
+        function isWeekend() {
+            const d = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short' });
+            return d === 'Sat' || d === 'Sun';
+        }
+
+        // ==================== SUPABASE ====================
+        async function loadFromSupabase() {
+            document.getElementById('dbDot').className = 'w-2 h-2 bg-yellow-500 rounded-full';
+            document.getElementById('dbText').textContent = 'Loading...';
+
+            try {
+                // Load readings
+                const { data: readingsData, error: readingsError } = await supabase
+                    .from('pizza_readings')
+                    .select('*')
+                    .order('timestamp', { ascending: true });
+
+                if (readingsError) throw readingsError;
+
+                readings = readingsData.map(r => ({
+                    ...r,
+                    timestamp: new Date(r.timestamp)
+                }));
+
+                // Load patterns
+                const { data: hourly } = await supabase.from('hourly_patterns').select('*').order('hour');
+                const { data: weekday } = await supabase.from('weekday_patterns').select('*').order('weekday');
+                const { data: spikesData } = await supabase.from('pizza_spikes').select('*').order('timestamp', { ascending: false }).limit(50);
+
+                hourlyPatterns = hourly || [];
+                weekdayPatterns = weekday || [];
+                spikes = (spikesData || []).map(s => ({ ...s, timestamp: new Date(s.timestamp) }));
+
+                document.getElementById('dbDot').className = 'pulse-dot w-2 h-2 bg-green-500 rounded-full';
+                document.getElementById('dbText').textContent = `DB: ${readings.length}`;
+                document.getElementById('totalRecords').textContent = readings.length;
+
+                console.log(`✅ Loaded ${readings.length} readings from Supabase`);
+                return true;
+
+            } catch (error) {
+                console.error('Supabase error:', error);
+                document.getElementById('dbDot').className = 'w-2 h-2 bg-red-500 rounded-full';
+                document.getElementById('dbText').textContent = 'DB Error';
+                return false;
+            }
+        }
+
+        // Subscribe to realtime updates
+        function subscribeToUpdates() {
+            supabase
+                .channel('readings')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pizza_readings' }, (payload) => {
+                    console.log('New reading:', payload.new);
+                    readings.push({ ...payload.new, timestamp: new Date(payload.new.timestamp) });
+                    updateUI();
+                })
+                .subscribe();
+        }
+
+        // ==================== LIVE FALLBACK ====================
+        async function fetchLive() {
+            try {
+                const res = await fetch(CORS_PROXY + encodeURIComponent(PIZZINT_API));
+                const json = await res.json();
+                if (json.success && json.data) {
+                    const pops = json.data.map(l => l.current_popularity || 0);
+                    return pops.reduce((a, b) => a + b, 0) / pops.length;
+                }
+            } catch (e) {
+                console.error('Live fetch error:', e);
+            }
+            return null;
+        }
+
+        // ==================== CHARTS ====================
+        function initCharts() {
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            mainChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        { label: 'Corridor High', data: [], backgroundColor: 'rgba(6,182,212,0.15)', borderColor: 'transparent', fill: '+1', tension: 0.3, pointRadius: 0, order: 4 },
+                        { label: 'Corridor Low', data: [], borderColor: 'transparent', fill: false, tension: 0.3, pointRadius: 0, order: 5 },
+                        { label: 'Prognose', data: [], borderColor: '#06b6d4', borderDash: [5,5], borderWidth: 2, pointRadius: 0, fill: false, order: 2 },
+                        { label: 'Pizza Index', data: [], borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.2)', fill: true, tension: 0.3, pointRadius: 1, borderWidth: 2.5, order: 1 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { intersect: false, mode: 'index' },
+                    scales: {
+                        x: { type: 'time', time: { unit: 'hour', displayFormats: { hour: 'HH:mm', day: 'dd.MM' } }, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#6b7280', maxTicksLimit: 12 } },
+                        y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#6b7280' } }
+                    },
+                    plugins: { legend: { display: false }, annotation: { annotations: {} } }
+                }
+            });
+
+            const ctx2 = document.getElementById('patternChart').getContext('2d');
+            patternChart = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: Array.from({length:24}, (_,i) => `${i.toString().padStart(2,'0')}`),
+                    datasets: [{ data: Array(24).fill(0), backgroundColor: Array(24).fill(0).map((_,i) => (i>=18||i<6) ? 'rgba(239,68,68,0.5)' : 'rgba(249,115,22,0.5)'), borderWidth: 1 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { x: { grid: { display: false }, ticks: { color: '#6b7280', font: { size: 8 } } }, y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#6b7280' } } }, plugins: { legend: { display: false } } }
+            });
+
+            const ctx3 = document.getElementById('weekdayChart').getContext('2d');
+            weekdayChart = new Chart(ctx3, {
+                type: 'bar',
+                data: {
+                    labels: ['So','Mo','Di','Mi','Do','Fr','Sa'],
+                    datasets: [{ data: Array(7).fill(0), backgroundColor: ['rgba(168,85,247,0.5)','rgba(249,115,22,0.5)','rgba(249,115,22,0.5)','rgba(249,115,22,0.5)','rgba(249,115,22,0.5)','rgba(249,115,22,0.5)','rgba(168,85,247,0.5)'], borderWidth: 1 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { x: { grid: { display: false }, ticks: { color: '#6b7280' } }, y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#6b7280' } } }, plugins: { legend: { display: false } } }
+            });
+        }
+
+        function getFilteredReadings(range) {
+            const now = new Date();
+            const ranges = { '6h': 6*3600000, '12h': 12*3600000, '24h': 24*3600000, '3d': 3*86400000, '7d': 7*86400000, '30d': 30*86400000, '90d': 90*86400000, 'all': 365*86400000 };
+            const cutoff = new Date(now - ranges[range]);
+            return readings.filter(r => r.timestamp >= cutoff);
+        }
+
+        function updateChart() {
+            if (!mainChart || readings.length === 0) return;
+
+            const filtered = getFilteredReadings(currentTimeRange);
+            const showForecast = document.getElementById('showForecast').checked;
+            const units = { '6h':'hour','12h':'hour','24h':'hour','3d':'day','7d':'day','30d':'day','90d':'day','all':'day' };
+            mainChart.options.scales.x.time.unit = units[currentTimeRange];
+
+            const actualData = filtered.map(r => ({ x: r.timestamp, y: r.index_value }));
+            mainChart.data.datasets[3].data = actualData;
+            mainChart.data.datasets[3].pointRadius = filtered.length > 500 ? 0 : 1;
+
+            if (showForecast && hourlyPatterns.length > 0) {
+                const forecastData = [], corridorHigh = [], corridorLow = [];
+                filtered.forEach(r => {
+                    const hp = hourlyPatterns.find(p => p.hour === r.dc_hour) || { avg_index: 30, std_dev: 15 };
+                    forecastData.push({ x: r.timestamp, y: hp.avg_index });
+                    corridorHigh.push({ x: r.timestamp, y: Math.min(100, hp.avg_index + (hp.std_dev || 15)) });
+                    corridorLow.push({ x: r.timestamp, y: Math.max(0, hp.avg_index - (hp.std_dev || 15)) });
+                });
+                mainChart.data.datasets[0].data = corridorHigh;
+                mainChart.data.datasets[1].data = corridorLow;
+                mainChart.data.datasets[2].data = forecastData;
+            } else {
+                mainChart.data.datasets[0].data = [];
+                mainChart.data.datasets[1].data = [];
+                mainChart.data.datasets[2].data = [];
+            }
+
+            // Overtime zones
+            const annotations = {};
+            let zoneIndex = 0, inZone = false;
+            filtered.forEach(r => {
+                const isOT = r.is_overtime || r.is_weekend;
+                if (isOT && !inZone) { annotations[`z${zoneIndex}`] = { type:'box', xMin:r.timestamp, xMax:r.timestamp, backgroundColor:'rgba(239,68,68,0.08)', borderWidth:0 }; inZone = true; }
+                else if (isOT && inZone) { annotations[`z${zoneIndex}`].xMax = r.timestamp; }
+                else if (!isOT && inZone) { zoneIndex++; inZone = false; }
+            });
+            mainChart.options.plugins.annotation.annotations = annotations;
+            mainChart.update('none');
+
+            // Stats
+            const vals = filtered.map(r => r.index_value);
+            document.getElementById('peakPeriod').textContent = Math.round(Math.max(...vals));
+            document.getElementById('lowPeriod').textContent = Math.round(Math.min(...vals));
+            document.getElementById('baseline').textContent = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+        }
+
+        function updatePatternCharts() {
+            if (patternChart && hourlyPatterns.length > 0) {
+                patternChart.data.datasets[0].data = hourlyPatterns.map(p => p.avg_index || 0);
+                patternChart.update('none');
+            }
+            if (weekdayChart && weekdayPatterns.length > 0) {
+                weekdayChart.data.datasets[0].data = weekdayPatterns.map(p => p.avg_index || 0);
+                weekdayChart.update('none');
+            }
+        }
+
+        function setTimeRange(range) {
+            currentTimeRange = range;
+            document.querySelectorAll('.time-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.range === range));
+            updateChart();
+        }
+
+        // ==================== UI ====================
+        function updateUI() {
+            updateChart();
+            updatePatternCharts();
+            updateIndexDisplay();
+            updateSpikes();
+            updateOvertimeStatus();
+            updateStats();
+        }
+
+        function updateIndexDisplay() {
+            if (readings.length === 0) return;
+            const latest = readings[readings.length - 1];
+            const val = Math.round(latest.index_value);
+
+            document.getElementById('currentIndex').textContent = val;
+            document.getElementById('indexBar').style.width = val + '%';
+
+            // Trend
+            const hourAgo = readings.filter(r => r.timestamp >= new Date(Date.now() - 3600000));
+            let change = 0;
+            if (hourAgo.length > 1) change = Math.round(val - hourAgo[0].index_value);
+            document.getElementById('indexTrend').textContent = change > 5 ? '↑' : change < -5 ? '↓' : '→';
+            document.getElementById('indexChange').textContent = (change >= 0 ? '+' : '') + change;
+
+            // Status
+            let status, color;
+            if (val < 25) { status = 'RUHIG'; color = 'text-green-400'; }
+            else if (val < 50) { status = 'NORMAL'; color = 'text-blue-400'; }
+            else if (val < 75) { status = 'AKTIV'; color = 'text-orange-400'; }
+            else { status = 'SPIKE'; color = 'text-red-400'; }
+            document.getElementById('indexStatus').textContent = status;
+            document.getElementById('indexStatus').className = `text-center text-lg font-semibold ${color}`;
+            document.getElementById('currentIndex').className = `text-7xl font-bold index-number ${color}`;
+
+            // Forecast
+            const hp = hourlyPatterns.find(p => p.hour === latest.dc_hour) || { avg_index: 30 };
+            document.getElementById('forecastValue').textContent = Math.round(hp.avg_index);
+            const diff = val - hp.avg_index;
+            document.getElementById('forecastDiff').textContent = diff > 0 ? `+${Math.round(diff)} über` : `${Math.round(diff)} unter`;
+
+            // Alert
+            const ot = isOvertime() || isWeekend();
+            if (val >= 70 || (val >= 50 && ot)) {
+                document.getElementById('spikeAlert').classList.remove('hidden');
+                document.getElementById('spikeValue').textContent = val;
+                document.getElementById('spikeDetails').textContent = ot && val >= 50 ? `Index ${val} während Überstunden` : `Index ${val} - erhöhte Aktivität`;
+            } else {
+                document.getElementById('spikeAlert').classList.add('hidden');
+            }
+
+            // Forecast list
+            let html = '';
+            for (let h = 1; h <= 6; h++) {
+                const futureHour = (getDCHour() + h) % 24;
+                const hp = hourlyPatterns.find(p => p.hour === futureHour) || { avg_index: 30, std_dev: 15 };
+                const isOT = futureHour >= 18 || futureHour < 6;
+                html += `<div class="flex justify-between text-sm"><span class="text-gray-400">${futureHour.toString().padStart(2,'0')}:00 ${isOT?'🌙':''}</span><span class="text-cyan-400 font-bold">${Math.round(hp.avg_index)}</span></div>`;
+            }
+            document.getElementById('forecastList').innerHTML = html;
+        }
+
+        function updateSpikes() {
+            document.getElementById('spikeCount').textContent = spikes.length;
+            document.getElementById('spikesTotal').textContent = spikes.length;
+
+            const container = document.getElementById('spikeHistory');
+            if (spikes.length === 0) {
+                container.innerHTML = '<div class="p-4 bg-green-900/20 rounded-lg border-l-4 border-green-500"><p class="text-green-400">Keine Spikes</p></div>';
+                return;
+            }
+
+            container.innerHTML = spikes.slice(0, 20).map(s => {
+                const tags = s.is_overtime || s.is_weekend ? '<span class="px-2 py-0.5 bg-red-900/50 text-red-400 text-xs rounded ml-2">ÜBERSTUNDEN</span>' : '';
+                return `<div class="p-3 bg-gray-900/50 rounded-lg border-l-4 ${s.is_overtime||s.is_weekend?'border-red-500':'border-orange-500'}">
+                    <div class="text-xs text-gray-500">${s.timestamp.toLocaleString('de-DE')}${tags}</div>
+                    <div class="text-sm mt-1">Index: ${Math.round(s.index_from)} → <span class="font-bold ${s.index_to>=70?'text-red-400':'text-orange-400'}">${Math.round(s.index_to)}</span></div>
+                </div>`;
+            }).join('');
+        }
+
+        function updateOvertimeStatus() {
+            document.getElementById('dcTime').textContent = getDCTime();
+            const ot = isOvertime(), we = isWeekend();
+            const label = document.getElementById('overtimeLabel');
+            const icon = document.getElementById('overtimeIcon');
+            const text = document.getElementById('overtimeText');
+
+            if (we) { label.textContent = 'WOCHENENDE'; label.className = 'px-3 py-1 rounded-full text-xs font-semibold bg-purple-900/50 text-purple-400'; icon.textContent = '📅'; text.textContent = 'Wochenende'; }
+            else if (ot) { label.textContent = 'ÜBERSTUNDEN'; label.className = 'px-3 py-1 rounded-full text-xs font-semibold bg-red-900/50 text-red-400'; icon.textContent = '🌙'; text.textContent = 'Außerhalb Bürozeiten'; }
+            else { label.textContent = 'BÜROZEIT'; label.className = 'px-3 py-1 rounded-full text-xs font-semibold bg-green-900/50 text-green-400'; icon.textContent = '🏢'; text.textContent = 'Normale Arbeitszeit'; }
+        }
+
+        function updateStats() {
+            if (readings.length === 0) return;
+            const week = getFilteredReadings('7d');
+            if (week.length > 0) {
+                const vals = week.map(r => r.index_value);
+                document.getElementById('avg7d').textContent = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+                document.getElementById('max7d').textContent = Math.round(Math.max(...vals));
+            }
+            const oldest = readings[0].timestamp;
+            document.getElementById('dataSince').textContent = oldest.toLocaleDateString('de-DE');
+            document.getElementById('historyInfo').textContent = `${readings.length} Datenpunkte seit ${oldest.toLocaleDateString('de-DE')}`;
+        }
+
+        function exportData() {
+            const csv = ['Timestamp,Index,Hour,Weekday,Overtime,Weekend'];
+            readings.forEach(r => csv.push(`${r.timestamp.toISOString()},${r.index_value},${r.dc_hour},${r.dc_weekday},${r.is_overtime},${r.is_weekend}`));
+            const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `pizzint_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+        }
+
+        // ==================== INIT ====================
+        async function init() {
+            initCharts();
+            const dbLoaded = await loadFromSupabase();
+
+            if (dbLoaded && readings.length > 0) {
+                updateUI();
+                subscribeToUpdates();
+            } else {
+                document.getElementById('historyInfo').textContent = 'Keine Daten in DB - bitte Supabase konfigurieren';
+            }
+
+            // Also fetch live for current value
+            const liveIndex = await fetchLive();
+            if (liveIndex !== null) {
+                document.getElementById('statusDot').className = 'pulse-dot w-2 h-2 bg-green-500 rounded-full';
+                document.getElementById('statusText').textContent = 'LIVE';
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('de-DE');
+            }
+
+            setInterval(() => document.getElementById('dcTime').textContent = getDCTime(), 1000);
+            setInterval(async () => {
+                await loadFromSupabase();
+                updateUI();
+            }, 60000);
+        }
+
+        init();
+    </script>
+</body>
+</html>
