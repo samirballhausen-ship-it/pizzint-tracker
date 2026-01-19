@@ -18,9 +18,22 @@ Das Repository ist fertig konfiguriert:
 ### Optional: Manueller Workflow-Start
 
 Falls die automatische Sammlung verzögert ist:
+
+**Option 1: Via GitHub UI** (Empfohlen)
 1. Gehe zu **Actions** → **Collect Pizza Index Data**
 2. Klicke **Run workflow** → **Run workflow**
 3. Warte ~10 Sekunden bis neue Daten gesammelt sind
+
+**Option 2: Lokales Script ausführen**
+```bash
+# Im Repository-Verzeichnis:
+node scripts/collect-manual.js
+
+# Dann committen und pushen:
+git add data/readings.json
+git commit -m "Manual data collection"
+git push
+```
 
 ### GitHub Pages aktivieren (falls noch nicht aktiv)
 
