@@ -236,6 +236,9 @@
         const SUPABASE_CONFIGURED = SUPABASE_URL && SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
         const supabase = SUPABASE_CONFIGURED ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
+        // GitHub data file (auto-collected every 10 min)
+        const GITHUB_DATA_URL = 'https://raw.githubusercontent.com/samirballhausen-ship-it/pizzint-tracker/master/data/readings.json';
+
         // Live API
         const PIZZINT_API = 'https://www.pizzint.watch/api/dashboard-data';
         const CORS_PROXY = 'https://corsproxy.io/?';
@@ -266,11 +269,64 @@
             return d === 'Sat' || d === 'Sun';
         }
 
+        // ==================== GITHUB DATA ====================
+        async function loadFromGitHub() {
+            document.getElementById('dbDot').className = 'w-2 h-2 bg-yellow-500 rounded-full';
+            document.getElementById('dbText').textContent = 'Loading...';
+
+            try {
+                const res = await fetch(GITHUB_DATA_URL + '?t=' + Date.now()); // Cache bust
+                if (!res.ok) throw new Error('No data file yet');
+                const db = await res.json();
+
+                if (db.readings && db.readings.length > 0) {
+                    readings = db.readings.map(r => ({
+                        ...r,
+                        timestamp: new Date(r.timestamp)
+                    }));
+                    spikes = (db.spikes || []).map(s => ({ ...s, timestamp: new Date(s.timestamp) }));
+
+                    // Calculate patterns from data
+                    calculatePatternsFromReadings();
+
+                    document.getElementById('dbDot').className = 'pulse-dot w-2 h-2 bg-green-500 rounded-full';
+                    document.getElementById('dbText').textContent = `GitHub: ${readings.length}`;
+                    document.getElementById('totalRecords').textContent = readings.length;
+
+                    console.log('Loaded ' + readings.length + ' readings from GitHub');
+                    return true;
+                }
+            } catch (e) {
+                console.log('GitHub data not available:', e.message);
+            }
+            return false;
+        }
+
+        function calculatePatternsFromReadings() {
+            // Calculate hourly patterns
+            hourlyPatterns = Array.from({length: 24}, (_, h) => {
+                const hourReadings = readings.filter(r => r.dc_hour === h);
+                if (hourReadings.length === 0) return { hour: h, avg_index: 30, std_dev: 15, sample_count: 0 };
+                const values = hourReadings.map(r => r.index_value);
+                const avg = values.reduce((a,b) => a+b, 0) / values.length;
+                const std = Math.sqrt(values.reduce((sum, v) => sum + Math.pow(v - avg, 2), 0) / values.length);
+                return { hour: h, avg_index: avg, std_dev: std || 10, sample_count: hourReadings.length };
+            });
+
+            // Calculate weekday patterns
+            weekdayPatterns = Array.from({length: 7}, (_, d) => {
+                const dayReadings = readings.filter(r => r.dc_weekday === d);
+                if (dayReadings.length === 0) return { weekday: d, avg_index: 30, std_dev: 15, sample_count: 0 };
+                const values = dayReadings.map(r => r.index_value);
+                const avg = values.reduce((a,b) => a+b, 0) / values.length;
+                const std = Math.sqrt(values.reduce((sum, v) => sum + Math.pow(v - avg, 2), 0) / values.length);
+                return { weekday: d, avg_index: avg, std_dev: std || 10, sample_count: dayReadings.length };
+            });
+        }
+
         // ==================== SUPABASE ====================
         async function loadFromSupabase() {
             if (!SUPABASE_CONFIGURED) {
-                document.getElementById('dbDot').className = 'w-2 h-2 bg-gray-500 rounded-full';
-                document.getElementById('dbText').textContent = 'Demo';
                 return false;
             }
 
@@ -579,17 +635,22 @@
         // ==================== INIT ====================
         async function init() {
             initCharts();
-            const dbLoaded = await loadFromSupabase();
 
-            if (dbLoaded && readings.length > 0) {
+            // Try loading data: GitHub first, then Supabase, then demo mode
+            let dataLoaded = await loadFromGitHub();
+
+            if (!dataLoaded && SUPABASE_CONFIGURED) {
+                dataLoaded = await loadFromSupabase();
+                if (dataLoaded) subscribeToUpdates();
+            }
+
+            if (dataLoaded && readings.length > 0) {
                 updateUI();
-                subscribeToUpdates();
+                document.getElementById('historyInfo').innerHTML = '<span class="text-green-400">Daten werden automatisch gesammelt</span> - Updates alle 10 Min via GitHub Actions';
             } else {
-                if (!SUPABASE_CONFIGURED) {
-                    document.getElementById('historyInfo').innerHTML = '<span class="text-yellow-400">DEMO MODUS</span> - Live-Index wird angezeigt, aber keine Historie. <a href="https://github.com/samirballhausen-ship-it/pizzint-tracker#readme" target="_blank" class="text-cyan-400 underline">Supabase einrichten</a> für volle Funktionalität.';
-                } else {
-                    document.getElementById('historyInfo').textContent = 'Keine Daten in DB - Collector noch nicht gestartet';
-                }
+                document.getElementById('historyInfo').innerHTML = '<span class="text-yellow-400">SAMMLUNG STARTET</span> - Erste Daten erscheinen nach dem naechsten GitHub Actions Run (~10 Min)';
+                document.getElementById('dbDot').className = 'w-2 h-2 bg-yellow-500 rounded-full';
+                document.getElementById('dbText').textContent = 'Warte...';
             }
 
             // Fetch live for current value
@@ -600,32 +661,30 @@
                 document.getElementById('currentIndex').textContent = Math.round(liveIndex);
                 document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('de-DE');
 
-                // In demo mode, add live point to chart
-                if (!SUPABASE_CONFIGURED) {
-                    readings.push({ timestamp: new Date(), index_value: liveIndex, dc_hour: getDCHour(), is_overtime: isOvertime() });
+                // Add live point if no data yet
+                if (readings.length === 0) {
+                    readings.push({ timestamp: new Date(), index_value: liveIndex, dc_hour: getDCHour(), dc_weekday: new Date().getDay(), is_overtime: isOvertime(), is_weekend: isWeekend() });
                     updateUI();
                 }
             }
 
             setInterval(() => document.getElementById('dcTime').textContent = getDCTime(), 1000);
 
-            // Refresh live value every minute
+            // Refresh data every 2 minutes
             setInterval(async () => {
+                // Reload from GitHub
+                const newData = await loadFromGitHub();
+                if (newData) {
+                    updateUI();
+                }
+
+                // Also update live value
                 const live = await fetchLive();
                 if (live !== null) {
                     document.getElementById('currentIndex').textContent = Math.round(live);
                     document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('de-DE');
-                    if (!SUPABASE_CONFIGURED) {
-                        readings.push({ timestamp: new Date(), index_value: live, dc_hour: getDCHour(), is_overtime: isOvertime() });
-                        if (readings.length > 1000) readings = readings.slice(-500);
-                        updateUI();
-                    }
                 }
-                if (SUPABASE_CONFIGURED) {
-                    await loadFromSupabase();
-                    updateUI();
-                }
-            }, 60000);
+            }, 120000);
         }
 
         init();

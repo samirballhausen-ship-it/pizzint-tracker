@@ -1,6 +1,6 @@
 # GitHub Actions Workflow for Pizza Index Data Collection
+# Stores data directly in the repository - NO external database needed!
 # Runs every 10 minutes (free tier allows ~2000 minutes/month)
-# To reduce usage, change to */30 for every 30 minutes
 
 name: Collect Pizza Index Data
 
@@ -11,6 +11,9 @@ on:
 
   # Allow manual trigger
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   collect:
@@ -24,13 +27,110 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Collect and save data
+        run: |
+          # Fetch current data from pizzint.watch
+          DATA=$(curl -s "https://www.pizzint.watch/api/dashboard-data")
 
-      - name: Run collector
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npm run collect
+          # Calculate index
+          INDEX=$(echo "$DATA" | node -e "
+            const data = JSON.parse(require('fs').readFileSync('/dev/stdin', 'utf8'));
+            if (data.success && data.data) {
+              const pops = data.data.map(l => l.current_popularity || 0);
+              const avg = pops.reduce((a,b) => a+b, 0) / pops.length;
+              console.log(avg.toFixed(2));
+            } else {
+              console.log('null');
+            }
+          ")
+
+          if [ "$INDEX" = "null" ]; then
+            echo "Failed to fetch data"
+            exit 0
+          fi
+
+          # Get DC time info
+          DC_HOUR=$(TZ='America/New_York' date +%H)
+          DC_WEEKDAY=$(TZ='America/New_York' date +%u)
+          DC_WEEKDAY=$((DC_WEEKDAY % 7))  # Convert to 0=Sunday format
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Determine overtime/weekend
+          IS_OVERTIME="false"
+          if [ "$DC_HOUR" -ge 18 ] || [ "$DC_HOUR" -lt 6 ]; then
+            IS_OVERTIME="true"
+          fi
+
+          IS_WEEKEND="false"
+          if [ "$DC_WEEKDAY" -eq 0 ] || [ "$DC_WEEKDAY" -eq 6 ]; then
+            IS_WEEKEND="true"
+          fi
+
+          echo "Index: $INDEX | Hour: $DC_HOUR | Overtime: $IS_OVERTIME | Weekend: $IS_WEEKEND"
+
+          # Update readings.json
+          node -e "
+            const fs = require('fs');
+            const file = 'data/readings.json';
+            let db = { readings: [], spikes: [], lastUpdate: null };
+
+            try {
+              db = JSON.parse(fs.readFileSync(file, 'utf8'));
+            } catch(e) {
+              console.log('Creating new data file');
+            }
+
+            const newReading = {
+              timestamp: '$TIMESTAMP',
+              index_value: parseFloat('$INDEX'),
+              dc_hour: parseInt('$DC_HOUR'),
+              dc_weekday: parseInt('$DC_WEEKDAY'),
+              is_overtime: $IS_OVERTIME,
+              is_weekend: $IS_WEEKEND
+            };
+
+            // Check for duplicate (same minute)
+            const lastTs = db.readings.length > 0 ? db.readings[db.readings.length-1].timestamp : null;
+            if (lastTs && lastTs.substring(0,16) === newReading.timestamp.substring(0,16)) {
+              console.log('Skipping duplicate');
+              process.exit(0);
+            }
+
+            // Check for spike
+            if (db.readings.length > 0) {
+              const prev = db.readings[db.readings.length-1].index_value;
+              const change = newReading.index_value - prev;
+              if (change > 20 || (newReading.index_value > 70 && prev < 55)) {
+                console.log('SPIKE DETECTED: ' + prev.toFixed(0) + ' -> ' + newReading.index_value.toFixed(0));
+                db.spikes.push({
+                  timestamp: newReading.timestamp,
+                  index_from: prev,
+                  index_to: newReading.index_value,
+                  change_amount: change,
+                  is_overtime: newReading.is_overtime,
+                  is_weekend: newReading.is_weekend
+                });
+                // Keep only last 100 spikes
+                if (db.spikes.length > 100) db.spikes = db.spikes.slice(-100);
+              }
+            }
+
+            db.readings.push(newReading);
+            db.lastUpdate = newReading.timestamp;
+
+            // Keep only last 10000 readings (~70 days at 10min intervals)
+            if (db.readings.length > 10000) {
+              db.readings = db.readings.slice(-10000);
+            }
+
+            fs.writeFileSync(file, JSON.stringify(db, null, 2));
+            console.log('Saved. Total readings: ' + db.readings.length);
+          "
+
+      - name: Commit and push
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add data/readings.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-collect: $(date -u +%Y-%m-%d\ %H:%M) UTC" && git push)
