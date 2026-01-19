@@ -3,6 +3,7 @@
 // MANUAL COLLECTOR FOR GITHUB-BASED STORAGE
 // =====================================================
 // Usage: node scripts/collect-manual.js
+// Requires: Node.js 18+ (for built-in fetch API)
 // This script collects data and updates data/readings.json
 // Run this manually when GitHub Actions scheduled runs are delayed
 
@@ -13,6 +14,15 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = path.join(__dirname, '..', 'data', 'readings.json');
 const PIZZINT_API = 'https://www.pizzint.watch/api/dashboard-data';
+
+// Check Node version
+const nodeVersion = parseInt(process.version.slice(1).split('.')[0]);
+if (nodeVersion < 18) {
+    console.error('❌ This script requires Node.js 18 or higher (for built-in fetch API)');
+    console.error(`   Current version: ${process.version}`);
+    console.error('   Please upgrade Node.js or use the GitHub Actions workflow instead');
+    process.exit(1);
+}
 
 function getDCTimeInfo(date = new Date()) {
     const dcTime = date.toLocaleString('en-US', { timeZone: 'America/New_York' });
@@ -125,7 +135,9 @@ async function collect() {
             console.log(`[${now}] 🔔 Note: Spike detected and recorded`);
         }
 
-        console.log(`\n✨ Collection complete! Run 'git add data/readings.json && git commit -m "Manual collect: ${now}" && git push' to update the repository.`);
+        console.log(`\n✨ Collection complete!`);
+        console.log(`   Next step: Commit and push the updated data file`);
+        console.log(`   Example: git add data/readings.json && git commit -m "Manual collect" && git push`);
 
         return { 
             status: 'success', 

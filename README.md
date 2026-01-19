@@ -24,7 +24,7 @@ Falls die automatische Sammlung verzögert ist:
 2. Klicke **Run workflow** → **Run workflow**
 3. Warte ~10 Sekunden bis neue Daten gesammelt sind
 
-**Option 2: Lokales Script ausführen**
+**Option 2: Lokales Script ausführen** (benötigt Node.js 18+)
 ```bash
 # Im Repository-Verzeichnis:
 node scripts/collect-manual.js
