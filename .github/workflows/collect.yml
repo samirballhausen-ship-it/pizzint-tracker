@@ -1,6 +1,12 @@
 # GitHub Actions Workflow for Pizza Index Data Collection
 # Stores data directly in the repository - NO external database needed!
 # Runs every 10 minutes (free tier allows ~2000 minutes/month)
+#
+# ⚠️ WARNING: GitHub Actions scheduled workflows are NOT 100% reliable!
+# - Runs may be delayed by minutes to hours, especially on free tier
+# - This is a known GitHub Actions limitation, not a bug
+# - For guaranteed timing, use an external cron service to trigger via API
+# - Manual trigger: Actions → "Collect Pizza Index Data" → "Run workflow"
 
 name: Collect Pizza Index Data
 
