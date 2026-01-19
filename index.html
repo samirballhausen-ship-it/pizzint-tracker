@@ -271,13 +271,21 @@
 
         // ==================== GITHUB DATA ====================
         async function loadFromGitHub() {
-            document.getElementById('dbDot').className = 'w-2 h-2 bg-yellow-500 rounded-full';
-            document.getElementById('dbText').textContent = 'Loading...';
+            console.log('loadFromGitHub called');
+            try {
+                document.getElementById('dbDot').className = 'w-2 h-2 bg-yellow-500 rounded-full';
+                document.getElementById('dbText').textContent = 'Loading...';
+            } catch(e) {
+                console.error('Element error:', e);
+            }
 
             try {
+                console.log('Fetching:', GITHUB_DATA_URL);
                 const res = await fetch(GITHUB_DATA_URL + '?t=' + Date.now()); // Cache bust
+                console.log('Response status:', res.status);
                 if (!res.ok) throw new Error('No data file yet');
                 const db = await res.json();
+                console.log('Data loaded:', db);
 
                 if (db.readings && db.readings.length > 0) {
                     readings = db.readings.map(r => ({
@@ -636,10 +644,14 @@
 
         // ==================== INIT ====================
         async function init() {
+            console.log('init() started');
             initCharts();
+            console.log('Charts initialized');
 
             // Try loading data: GitHub first, then Supabase, then demo mode
+            console.log('Calling loadFromGitHub...');
             let dataLoaded = await loadFromGitHub();
+            console.log('loadFromGitHub returned:', dataLoaded);
 
             if (!dataLoaded && SUPABASE_CONFIGURED) {
                 dataLoaded = await loadFromSupabase();
