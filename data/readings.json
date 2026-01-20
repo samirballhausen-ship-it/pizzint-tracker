@@ -1919,8 +1919,16 @@
       "dc_weekday": 2,
       "is_overtime": true,
       "is_weekend": false
+    },
+    {
+      "timestamp": "2026-01-20T23:39:41Z",
+      "index_value": 26,
+      "dc_hour": 18,
+      "dc_weekday": 2,
+      "is_overtime": true,
+      "is_weekend": false
     }
   ],
   "spikes": [],
-  "lastUpdate": "2026-01-20T23:17:45Z"
+  "lastUpdate": "2026-01-20T23:39:41Z"
 }
