@@ -4375,6 +4375,14 @@
       "dc_weekday": 5,
       "is_overtime": true,
       "is_weekend": false
+    },
+    {
+      "timestamp": "2026-01-23T07:43:38Z",
+      "index_value": 18.56,
+      "dc_hour": 2,
+      "dc_weekday": 5,
+      "is_overtime": true,
+      "is_weekend": false
     }
   ],
   "spikes": [
@@ -4387,5 +4395,5 @@
       "is_weekend": false
     }
   ],
-  "lastUpdate": "2026-01-23T07:40:29Z"
+  "lastUpdate": "2026-01-23T07:43:38Z"
 }
