@@ -11247,6 +11247,14 @@
       "dc_weekday": 3,
       "is_overtime": true,
       "is_weekend": false
+    },
+    {
+      "timestamp": "2026-01-29T00:23:35Z",
+      "index_value": 33.78,
+      "dc_hour": 19,
+      "dc_weekday": 3,
+      "is_overtime": true,
+      "is_weekend": false
     }
   ],
   "spikes": [
@@ -11337,7 +11345,15 @@
       "change_amount": 20.89,
       "is_overtime": false,
       "is_weekend": false
+    },
+    {
+      "timestamp": "2026-01-29T00:23:35Z",
+      "index_from": 12.44,
+      "index_to": 33.78,
+      "change_amount": 21.340000000000003,
+      "is_overtime": true,
+      "is_weekend": false
     }
   ],
-  "lastUpdate": "2026-01-29T00:13:35Z"
+  "lastUpdate": "2026-01-29T00:23:35Z"
 }
